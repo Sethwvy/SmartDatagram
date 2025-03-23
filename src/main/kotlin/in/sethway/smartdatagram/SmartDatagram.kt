@@ -6,6 +6,7 @@ import java.net.*
 import java.nio.ByteBuffer
 import java.util.*
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.random.Random
 
 class SmartDatagram(
@@ -90,6 +91,22 @@ class SmartDatagram(
 
   fun subscribe(routeName: String, callback: ((InetAddress, Int, ByteArray) -> Unit)) {
     subscriptions[routeName] = callback
+  }
+
+  class Packet(
+    val address: InetAddress,
+    val port: Int,
+    val data: ByteArray,
+  )
+
+  fun expectPacket(routeName: String, timeout: Long): Packet? {
+    val result = AtomicReference<Packet?>()
+    subscribe(routeName) { address, port, data ->
+      result.set(Packet(address, port, data))
+    }
+    Thread.sleep(timeout)
+    unsubscribe(routeName)
+    return result.get()
   }
 
   fun unsubscribe(routeName: String) {
