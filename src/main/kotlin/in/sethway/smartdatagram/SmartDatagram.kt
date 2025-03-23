@@ -113,16 +113,34 @@ class SmartDatagram(
     subscriptions -= routeName
   }
 
-  fun send(destinations: List<Destination>, routeName: String, data: ByteArray) {
+  fun send(
+    destinations: List<Destination>,
+    routeName: String,
+    data: ByteArray,
+    exceptionHandler: (Exception) -> Unit = { throw it }
+  ) {
     val bytes = preparePacket(routeName, data)
     for (destination in destinations) {
-      send(DatagramPacket(bytes, 0, bytes.size, destination.address, destination.port))
+      try {
+        send(DatagramPacket(bytes, 0, bytes.size, destination.address, destination.port))
+      } catch (exception: IOException) {
+        exceptionHandler(exception)
+      }
     }
   }
 
-  fun send(destination: Destination, routeName: String, data: ByteArray) {
+  fun send(
+    destination: Destination,
+    routeName: String,
+    data: ByteArray,
+    exceptionHandler: (Exception) -> Unit = { throw it }
+  ) {
     val bytes = preparePacket(routeName, data)
-    send(DatagramPacket(bytes, 0, bytes.size, destination.address, destination.port))
+    try {
+      send(DatagramPacket(bytes, 0, bytes.size, destination.address, destination.port))
+    } catch (exception: IOException) {
+      exceptionHandler(exception)
+    }
   }
 
   private fun preparePacket(routeName: String, data: ByteArray): ByteArray {
