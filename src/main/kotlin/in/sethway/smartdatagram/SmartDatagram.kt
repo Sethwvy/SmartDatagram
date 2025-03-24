@@ -53,39 +53,48 @@ class SmartDatagram(
       // [n bytes] route name
       // [k = 4 bytes] data length
       // [k bytes] packet data
-      var onset = 0
-      val signature = buffer.copyOf(4)
-      onset += 4
-      if (!SIGNATURE.contentEquals(signature)) {
-        println("Error: Wrong Smart UDP Signature!")
-        return
-      }
-      val version = buffer[onset++]
-      if (version != VERSION) {
-        println("Error: Expected version $VERSION but got $version!")
-        return
-      }
-      val uniquePacketId = String(buffer.copyOfRange(onset, onset + 16))
-      onset += 16
-      if (packetFilter.containsKey(uniquePacketId)) {
-        // We've already handled this!
-        return
-      }
-      packetFilter.put(uniquePacketId, System.currentTimeMillis())
-      val routeNameLength = buffer[onset++]
-      val routeName = String(buffer.copyOfRange(onset, onset + routeNameLength))
-      onset += routeNameLength
-
-      val packetDataLength = ByteBuffer.wrap(buffer.copyOfRange(onset, onset + 4)).getInt()
-      onset += 4
-      val packetData = buffer.copyOfRange(onset, onset + packetDataLength)
-
       try {
-        subscriptions[routeName]?.invoke(packet.address, packet.port, packetData)
+        consumePacket(buffer, packet)
       } catch (t: Throwable) {
-        println("Error while dispatching subscription")
+        println("Error consuming packet!")
         t.printStackTrace()
       }
+    }
+  }
+
+  private fun consumePacket(buffer: ByteArray, packet: DatagramPacket) {
+    var onset = 0
+    val signature = buffer.copyOf(4)
+    onset += 4
+    if (!SIGNATURE.contentEquals(signature)) {
+      println("Error: Wrong Smart UDP Signature!")
+      return
+    }
+    val version = buffer[onset++]
+    if (version != VERSION) {
+      println("Error: Expected version $VERSION but got $version!")
+      return
+    }
+    val uniquePacketId = String(buffer.copyOfRange(onset, onset + 16))
+    onset += 16
+    if (packetFilter.containsKey(uniquePacketId)) {
+      // We've already handled this!
+      return
+    }
+    packetFilter.put(uniquePacketId, System.currentTimeMillis())
+    val routeNameLength = buffer[onset++]
+    val routeName = String(buffer.copyOfRange(onset, onset + routeNameLength))
+    onset += routeNameLength
+
+    val packetDataLength = ByteBuffer.wrap(buffer.copyOfRange(onset, onset + 4)).getInt()
+    onset += 4
+    val packetData = buffer.copyOfRange(onset, onset + packetDataLength)
+
+    try {
+      subscriptions[routeName]?.invoke(packet.address, packet.port, packetData)
+    } catch (t: Throwable) {
+      println("Error while dispatching subscription")
+      t.printStackTrace()
     }
   }
 
