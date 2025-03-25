@@ -24,7 +24,8 @@ class SmartDatagram(
 
   private val executor = Executors.newSingleThreadExecutor()
 
-  private val subscriptions = Collections.synchronizedMap(HashMap<String, (InetAddress, Int, ByteArray) -> Unit>())
+  private val subscriptions =
+    Collections.synchronizedMap(HashMap<String, (InetAddress, Int, ByteArray, Boolean) -> Unit>())
   private val packetFilter = TimeoutMap<String>(20 * 1000)
 
   init {
@@ -77,11 +78,10 @@ class SmartDatagram(
     }
     val uniquePacketId = String(buffer.copyOfRange(onset, onset + 16))
     onset += 16
-    if (packetFilter.containsKey(uniquePacketId)) {
-      // We've already handled this!
-      return
+    val consumed = packetFilter.containsKey(uniquePacketId)
+    if (!consumed) {
+      packetFilter.put(uniquePacketId, System.currentTimeMillis())
     }
-    packetFilter.put(uniquePacketId, System.currentTimeMillis())
     val routeNameLength = buffer[onset++]
     val routeName = String(buffer.copyOfRange(onset, onset + routeNameLength))
     onset += routeNameLength
@@ -91,14 +91,14 @@ class SmartDatagram(
     val packetData = buffer.copyOfRange(onset, onset + packetDataLength)
 
     try {
-      subscriptions[routeName]?.invoke(packet.address, packet.port, packetData)
+      subscriptions[routeName]?.invoke(packet.address, packet.port, packetData, consumed)
     } catch (t: Throwable) {
       println("Error while dispatching subscription")
       t.printStackTrace()
     }
   }
 
-  fun subscribe(routeName: String, callback: ((InetAddress, Int, ByteArray) -> Unit)) {
+  fun subscribe(routeName: String, callback: ((InetAddress, Int, ByteArray, Boolean) -> Unit)) {
     subscriptions[routeName] = callback
   }
 
@@ -110,8 +110,10 @@ class SmartDatagram(
 
   fun expectPacket(routeName: String, timeout: Long): Packet? {
     val result = AtomicReference<Packet?>()
-    subscribe(routeName) { address, port, data ->
-      result.set(Packet(address, port, data))
+    subscribe(routeName) { address, port, data, consumed ->
+      if (!consumed) {
+        result.set(Packet(address, port, data))
+      }
     }
     Thread.sleep(timeout)
     unsubscribe(routeName)
