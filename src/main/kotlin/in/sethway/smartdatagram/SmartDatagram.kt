@@ -24,8 +24,12 @@ class SmartDatagram(
 
   private val executor = Executors.newSingleThreadExecutor()
 
-  private val subscriptions =
-    Collections.synchronizedMap(HashMap<String, (InetAddress, Int, ByteArray, Boolean) -> Unit>())
+  private class Route(
+    val transformer: (ByteArray) -> ByteArray,
+    val callback: ((InetAddress, Int, ByteArray, Boolean) -> Unit)
+  )
+
+  private val subscriptions = Collections.synchronizedMap(HashMap<String, Route>())
   private val packetFilter = TimeoutMap<String>(20 * 1000)
 
   init {
@@ -80,7 +84,7 @@ class SmartDatagram(
     onset += 16
     val consumed = packetFilter.containsKey(uniquePacketId)
     if (!consumed) {
-      packetFilter.put(uniquePacketId, System.currentTimeMillis())
+      packetFilter[uniquePacketId] = System.currentTimeMillis()
     }
     val routeNameLength = buffer[onset++]
     val routeName = String(buffer.copyOfRange(onset, onset + routeNameLength))
@@ -91,15 +95,21 @@ class SmartDatagram(
     val packetData = buffer.copyOfRange(onset, onset + packetDataLength)
 
     try {
-      subscriptions[routeName]?.invoke(packet.address, packet.port, packetData, consumed)
+      subscriptions[routeName]?.let {
+        it.callback.invoke(packet.address, packet.port, it.transformer(packetData), consumed)
+      }
     } catch (t: Throwable) {
       println("Error while dispatching subscription")
       t.printStackTrace()
     }
   }
 
-  fun subscribe(routeName: String, callback: ((InetAddress, Int, ByteArray, Boolean) -> Unit)) {
-    subscriptions[routeName] = callback
+  fun subscribe(
+    routeName: String,
+    transformer: ((ByteArray) -> ByteArray) = { it },
+    callback: ((InetAddress, Int, ByteArray, Boolean) -> Unit)
+  ) {
+    subscriptions[routeName] = Route(transformer, callback)
   }
 
   class Packet(
